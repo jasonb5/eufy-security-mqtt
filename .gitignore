@@ -1,0 +1,6 @@
+node_modules/
+
+*.lock
+config.json
+device-*.json
+station-*.json
