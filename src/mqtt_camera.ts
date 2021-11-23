@@ -1,24 +1,26 @@
 import { MqttClient } from 'mqtt';
-import {Device, PropertyValue} from 'eufy-security-client';
+import {Device, PropertyValue, GenericDeviceProperties, DeviceProperties, PropertyMetadataNumeric} from 'eufy-security-client';
 import {MqttDevice} from './mqtt_device';
 import axios from 'axios';
-import {Logger} from 'tslog';
 import {MqttBinarySensor} from './mqtt_binary_sensor';
+import {MqttSensor} from './mqtt_sensor';
+import {log} from './logger';
 
 export class MqttCamera extends MqttDevice {
-    topic: string;
-    properties: MqttDevice[] = [];
+    jsonAttributesTopic: string;
+    properties = new Map<string, MqttDevice>();
 
-    constructor(device: Device, mqtt: MqttClient, log: Logger) {
-        super('camera', device, mqtt, log);
+    constructor(device: Device, mqtt: MqttClient) {
+        super('camera', device.getSerial(), device, mqtt);
 
-        this.topic = `homeassistant/camera/${device.getSerial()}`;
+        this.jsonAttributesTopic = `${this.baseTopic}/jsoninfo`;
     }
 
     discoveryPayload(): any {
         return {
             name: this.device.getName(),
-            topic: this.topic,
+            topic: this.baseTopic,
+            json_attributes_topic: this.jsonAttributesTopic,
             unique_id: `${this.device.getSerial()} ${this.device.getName()}`
         };
     }
@@ -27,29 +29,59 @@ export class MqttCamera extends MqttDevice {
         super.register();
 
         let properties = this.device.getProperties();
-        let value = properties['pictureUrl']['value'] as string;
+        let value = properties['pictureUrl'];
 
-        this.update(value);
+        this.update('pictureUrl', value);
 
-        let enabled = new MqttBinarySensor('enabled', this.device, this.mqtt, this.log);
-        enabled.register();
-        this.properties.push(enabled);
+        let attributes: any = {};
+        let deviceProperties = DeviceProperties[this.device.getDeviceType()];
 
-        let motionDetected = new MqttBinarySensor('motionDetected', this.device, this.mqtt, this.log);
-        motionDetected.register();
-        this.properties.push(motionDetected);
-
-        this.device.on('property changed', (_device: Device, name: string, value: PropertyValue) => {
-            if (name === 'pictureUrl') {
-                this.update(value.value as string);
+        for (let key of Object.keys(GenericDeviceProperties)) {
+            if (key in properties) {
+                attributes[key] = properties[key].value;
             }
-        });
+        }
+
+        this.mqtt.publish(this.jsonAttributesTopic, JSON.stringify(attributes), {retain: true});
+
+        for (let key of Object.keys(properties)) {
+            if (key === 'pictureUrl' || Object.keys(GenericDeviceProperties).indexOf(key) !== -1) { continue; }
+
+            let prop = null;
+            let devProp = deviceProperties[key];
+
+            if (devProp) {
+                if (devProp.type === 'boolean') {
+                    prop = new MqttBinarySensor(key, this.device, this.mqtt); 
+                } else if (devProp.type === 'number') {
+                    prop = new MqttSensor(key, this.device, this.mqtt, devProp as PropertyMetadataNumeric);
+                } else {
+                    log.error(`Skipping property ${key} unsupported type ${devProp.type}`);
+                }
+            } else {
+                log.error(`HELP ${this.device.getName()} no type ${key}`);
+            }
+
+            if (prop) {
+                prop.register();
+
+                this.properties.set(key, prop);
+            }
+        }
     }
 
-    async update(url: string) {
-        let response = await axios.get(url, {responseType: 'arraybuffer'});
-        let buffer = Buffer.from(response.data);
+    async update(name: string, value: PropertyValue): Promise<any> {
+        log.info(`Updating property ${name} for ${this.device.getSerial()}`);
 
-        this.mqtt.publish(this.topic, buffer, {retain: true});
+        if (name === 'pictureUrl') {
+            let response = await axios.get(value.value as string, {responseType: 'arraybuffer'});
+            let buffer = Buffer.from(response.data);
+
+            this.mqtt.publish(this.baseTopic, buffer, {retain: true});
+        } else {
+            this.properties.get(name)?.update(name, value);
+        }
+
+        return null;
     }
 }

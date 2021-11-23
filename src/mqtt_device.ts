@@ -1,22 +1,22 @@
 import {MqttClient} from 'mqtt';
-import {Device} from 'eufy-security-client';
-import {Logger} from 'tslog';
+import {Device, PropertyValue} from 'eufy-security-client';
 
 export abstract class MqttDevice {
+    component: string;
+    unique_id: string;
+    baseTopic: string;
     discoveryTopic: string;
     device: Device;
     mqtt: MqttClient;
-    log: Logger;
 
-    constructor(component: string, device: Device, mqtt: MqttClient, log: Logger, name?: string) {
-        if (name === undefined) {
-            this.discoveryTopic = `homeassistant/${component}/${device.getSerial()}/config`;
-        } else {
-            this.discoveryTopic = `homeassistant/${component}/${device.getSerial()}/${name}/config`;
-        }
+    constructor(component: string, unique_id: string, device: Device, mqtt: MqttClient) {
+        this.component = component;
+        this.unique_id = unique_id;
         this.device = device;
         this.mqtt = mqtt;
-        this.log = log;
+
+        this.baseTopic = `homeassistant/${this.component}/${this.unique_id}`;
+        this.discoveryTopic = `${this.baseTopic}/config`;
     }
 
     devicePayload(): any {
@@ -29,21 +29,18 @@ export abstract class MqttDevice {
                 model: this.device.getModel(),
                 name: this.device.getName(),
                 sw_version: this.device.getSoftwareVersion()
-            }
+            },
         };
     }
 
     abstract discoveryPayload(): any;
+    abstract update(name: string, value: PropertyValue): void | Promise<any>;
 
     register() {
         let payload = {
             ...this.devicePayload(),
             ...this.discoveryPayload()
         };
-
-        this.log.info(`Registering ${this.device.getName()} to ${this.discoveryTopic}`);
-
-        this.log.info(`Payload: ${JSON.stringify(payload)}`);
 
         this.mqtt.publish(this.discoveryTopic, JSON.stringify(payload), {retain: true});
     }

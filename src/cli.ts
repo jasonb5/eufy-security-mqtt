@@ -1,8 +1,9 @@
-import {readFileSync, writeFile} from 'fs';
-import {EufySecurity, EufySecurityConfig, Device} from 'eufy-security-client';
+import {readFileSync} from 'fs';
+import {EufySecurity, EufySecurityConfig, Device, PropertyValue, Station} from 'eufy-security-client';
 import {connect} from 'mqtt';
-import {Logger} from 'tslog';
+import {MqttDevice} from './mqtt_device';
 import {MqttCamera} from './mqtt_camera';
+import {log} from './logger';
 
 interface Config {
     eufy: EufySecurityConfig,
@@ -21,13 +22,11 @@ function getConfig(path: string): any {
 }
 
 function main() {
-    let dump = true;
-
     let c = getConfig('./config.json'); 
 
     let mqtt = connect(c.mqtt);
 
-    let log = new Logger({minLevel: "info"});
+    log.setSettings({minLevel: "info"});
 
     let eufy = new EufySecurity(c.eufy, log);
 
@@ -36,20 +35,22 @@ function main() {
             log.info(`Connected to Eufy: ${value}`);
         });
 
-    let devices = [];
+    let devices = new Map<string, MqttDevice>();
 
     eufy.on('device added', (device: Device) => {
-        if (dump) {
-            let properties = device.getProperties();
-
-            writeFile(`./device-${device.getSerial()}.json`, JSON.stringify(properties), err => log.fatal(err));
-        }
-
         if (device.isCamera()) {
-            let camera = new MqttCamera(device, mqtt, log);
+            let camera = new MqttCamera(device, mqtt);
             camera.register();
-            devices.push(camera);
+            devices.set(device.getSerial(), camera);
         }
+    });
+
+    eufy.on('station added', (station: Station) => {
+        log.info(`Register station ${station.getSerial()}`);
+    });
+
+    eufy.on('device property changed', (device: Device, name: string, value: PropertyValue) => {
+        log.info(`Property updated ${device.getSerial()} name ${name} value ${value.value}`);
     });
 }
 
