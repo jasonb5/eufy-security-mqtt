@@ -1,4 +1,5 @@
 import {MqttClient} from 'mqtt';
+// import {log} from './../logger';
 
 export interface IDevice {
     configuration_url?: string;
@@ -20,6 +21,7 @@ export abstract class MqttEntity {
 
     baseTopic: string;
     discoveryTopic: string;
+    attributeTopic: string;
 
     constructor(component: string, unique_id: string, device: IDevice, mqtt: MqttClient) {
         this.component = component;
@@ -29,6 +31,7 @@ export abstract class MqttEntity {
 
         this.baseTopic = `homeassistant/${component}/${unique_id}`;
         this.discoveryTopic = `${this.baseTopic}/config`;
+        this.attributeTopic = `${this.baseTopic}/attributes`;
     }
 
     abstract discoveryPayload(): any;
@@ -38,6 +41,8 @@ export abstract class MqttEntity {
             device: this.device,
             ...this.discoveryPayload(),
         };
+
+        // log.info(`Publishing discovery with payload ${JSON.stringify(payload, null, 2)}`);
 
         this.mqtt.publish(this.discoveryTopic, JSON.stringify(payload));
     }
