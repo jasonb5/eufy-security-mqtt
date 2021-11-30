@@ -13,7 +13,7 @@ export class EufyManager {
 
     constructor(config: Config) {
         this.mqtt = connect(config.mqtt);
-        this.eufy = new EufySecurity(config.eufy);
+        this.eufy = new EufySecurity(config.eufy, log);
     }
 
     async run() {

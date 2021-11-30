@@ -1,12 +1,9 @@
 import {readFileSync} from 'fs';
 import {EufyManager} from './eufy_manager';
 import {EufySecurityConfig} from 'eufy-security-client';
-import {RTSPServer} from './rtsp';
-
-export interface RTSPServerConfig {
-    port: number,
-    port2: number
-}
+import {FFMpeg} from './ffmpeg';
+import {log} from './logger';
+import {RTSPSimpleServer} from './rtsp_simple_server';
 
 export interface MqttConfig {
     host: string,
@@ -18,7 +15,6 @@ export interface MqttConfig {
 export interface Config {
     eufy: EufySecurityConfig,
     mqtt: MqttConfig,
-    rtsp: RTSPServerConfig
 }
 
 function getConfig(path: string): any { let data = readFileSync(path); 
@@ -30,11 +26,17 @@ function main() {
 
     let eufyManager = new EufyManager(c);
 
-    eufyManager.run();
+    //eufyManager.run();
 
-    let rtspServer = new RTSPServer(c.rtsp, eufyManager);
+    log.info(`${eufyManager}`);
 
-    rtspServer.run();
+    let ffmpeg = new FFMpeg('rtsp://192.168.86.50:8554/sample');
+
+    log.info(`${ffmpeg}`);
+
+    let rtsp = new RTSPSimpleServer();
+
+    log.info(`${rtsp}`);
 }
 
 main();
