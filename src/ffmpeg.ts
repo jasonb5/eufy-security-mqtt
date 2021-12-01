@@ -31,4 +31,10 @@ export class FFMpeg {
             });
         }
     }
+
+    close() {
+        if (this.process) {
+            this.process.kill();
+        }
+    }
 }
